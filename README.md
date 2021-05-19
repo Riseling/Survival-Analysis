@@ -1,2 +1,2 @@
 # Survival-Analysis
-The Assignment of Survival Analysis
+The assignment of Survival Analysis
