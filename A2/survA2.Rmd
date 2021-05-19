@@ -1,0 +1,180 @@
+---
+title: "A2"
+author:
+  - 罗震林
+documentclass: ctexart
+output:
+  rticles::ctex:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+---
+
+# 1
+
+## (a)
+
+```{r}
+rm(list=ls()) 
+library(survival)
+library(survminer)
+library(nnet)
+library(ggplot2)
+actg <- read.table("ACTG175(speff2trial).txt",header = TRUE,sep=",")
+y_surv <-Surv(actg$days, actg$cens==1) # 创建生存对象
+
+
+model1 <- coxph(y_surv~factor(arms)+cd40+cd80+age+wtkg+hemo+homo+drugs+karnof+race+gender+symptom,data=actg)
+summary(model1)
+
+dumv <- class.ind(actg$arms)  # 创建哑变量
+colnames(dumv) <- c("arms0","arms1","arms2","arms3")
+actg <- cbind(actg,dumv) # 合并到数据框中
+model2 <- coxph(y_surv~arms1+arms2+arms3+cd40+cd80+age+wtkg+hemo+homo+drugs+karnof+race+gender+symptom,data=actg)
+summary(model2)
+```
+
+显著性：
+arms
+cd40
+cd80
+age
+drugs
+karnof
+symptom
+
+## (b)
+
+默认使用均值
+arms= 0 & arms=2
+```{r}
+summary(model1)
+```
+
+the estimated hazard ratio for arms=0 vs arms=3 is 1.7633.
+CI: 0.4517    0.7119
+yes
+
+## (c)
+
+### log-log
+
+* gender
+
+```{r}
+# 数据预处理
+kmfit1 <- survfit(y_surv~actg$gender)
+kmfit2 <- summary(kmfit1)
+kmfit3 <- data.frame(kmfit2$strata,kmfit2$time,kmfit2$surv)
+names(kmfit3)=c("gender","time","survival")
+gender0 <- kmfit3[kmfit3$gender=="actg$gender=0",] #分组
+gender1 <- kmfit3[kmfit3$gender=="actg$gender=1",]
+by_gender <- rbind(gender0,gender1) # 整合数据
+
+p1 <- ggplot(by_gender, aes(x=time,y=survival,color=gender))+geom_line()
+p1 + xlab("survival time in days") + 
+  ylab("log-log survival") + 
+  scale_color_discrete(breaks=c("actg$gender=0","actg$gender=1"),
+                       labels=c("gender=0","gender=1")) # 修改图例名称
+
+```
+
+不平行
+
+* cd40
+
+```{r}
+# cd40分组
+summary(actg$cd40)
+actg$s_cd40<- 0    
+actg[which(actg$cd40 <= 263.5),]$s_cd40=1           
+actg[which(actg$cd40 > 263.5 & actg$cd40 <= 423.0),]$s_cd40 = 2
+actg[which(actg$cd40 > 423.0),]$s_cd40 = 3  
+
+km1 <- survfit(y_surv~actg$s_cd40)
+km2 <- summary(km1)
+km3 <- data.frame(km2$strata,km2$time,km2$surv)
+names(km3)=c("cd40","time","survival")
+l_cd40 <- km3[km3$cd40=="actg$s_cd40=1",]
+m_cd40 <- km3[km3$cd40=="actg$s_cd40=2",]
+h_cd40 <- km3[km3$cd40=="actg$s_cd40=3",]
+gr_cd40 <- rbind(l_cd40, m_cd40, h_cd40)
+
+p2 <- ggplot(gr_cd40, aes(x=time,y=survival,color=cd40)) + geom_line()
+p2 + xlab("survival time in days") + 
+  ylab("log-log survival") + 
+  scale_colour_manual(breaks=c("actg$s_cd40=1","actg$s_cd40=2","actg$s_cd40=3"),
+                       labels=c("low","medium","high"),
+                      values= c('#000000', '#56B4E9', '#E69F00'))
+  
+```
+
+不平行
+
+### GOF
+
+```{r}
+model3 <- coxph(y_surv~gender+cd40,data=actg)
+phtest <- cox.zph(model3,transform = rank)
+phtest
+ggcoxzph(phtest,point.size = 1,ggtheme =  scale_y_continuous())
+plot(phtest)
+```
+
+gender不违背，cd40违背PH假设，总体来看都违背了PH假设
+
+## (d)
+
+```{r}
+model4 <- coxph(y_surv~factor(arms)+cd40+cd80+age+I(age^2)+I(age^3)+wtkg+hemo+homo+drugs+karnof+race+gender+symptom,data=actg)
+model4
+```
+
+## (e)
+
+```{r}
+model5 <- coxph(y_surv~factor(arms)+cd40+cd80+age+wtkg+hemo+homo+drugs+karnof+race+gender+symptom+gender:factor(arms),data=actg)
+summary(model5)
+```
+
+# 2
+
+## (a)
+
+```{r}
+patern0 <- data.frame(arms=c(0,1,2,3),cd40=400, cd80=500, age=25, wtkg=70, hemo=0,homo=0,drugs=1,karnof=90,race=1,gender=1,symptom=0)
+
+new_model <- survfit(model1,newdata=patern0)
+ggsurvplot(new_model,data=new_model,
+           xlab = "days",
+           ylim = c(0.7,1),
+           legend.title = "",      #图例标题
+           legend.labs = c("zidovudine", "zidovudine and didanosine",
+                           "zidovudine and zalcitabine", "didanosine"),
+           legend = c(0.25,0.3))
+```
+
+
+## (b)
+
+```{r}
+summary(new_model,times=365*2)
+```
+
+## (c)
+
+```{r}
+outcome <- predict(model1,newdata=patern0,type="risk")
+names(outcome)=c("0","1","2","3")
+
+s_mod1 <- summary(model1)
+p_mod1 <- predict(model1,type="risk")
+arm0 <- p_mod1[actg$arms==0]
+arm1 <- p_mod1[actg$arms==1]
+arm2 <- p_mod1[actg$arms==2]
+arm3 <- p_mod1[actg$arms==3]
+mean_four <- c(mean(arm0), mean(arm1), mean(arm2), mean(arm3))
+median_four <- c(median(arm0), median(arm1), median(arm2), median(arm3))
+cbind(outcome, mean_four, median_four)
+```
+

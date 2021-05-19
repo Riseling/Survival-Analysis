@@ -1,0 +1,206 @@
+---
+title: "A1"
+author:
+  - 罗震林
+documentclass: ctexart
+geometry: "left=2cm,right=2cm,top=2cm,bottom=2cm"
+output:
+  rticles::ctex:
+    fig_caption: no
+    number_sections: yes
+    toc: no
+---
+
+# 准备
+
+* 包
+
+```{r message=FALSE, warning=FALSE}
+rm(list=ls())   #清楚当前环境对象
+library(survival)
+library(survminer)  #生存曲线图包
+library(muhaz)    #风险函数包
+```
+
+这里共需要survival, survminer, muhaz三个包, 其中
+
+1. survival是生存分析常用包，包含创建生存对象等生存分析常用函数
+
+2. survminer是基于ggplot的画图包，包含对survival中一些函数返回结果进行画图的函数，比直接作图更加美观
+
+3. muhaz包中则含有**kphaz()**函数，可以用来计算Kaplan-Meier类型的风险函数
+
+* 读取数据
+
+```{r}
+actg <- read.table("ACTG175(speff2trial).txt",header = TRUE,sep=",")
+```
+
+ACTG175数据集共有2139个样本，27个变量，在本报告中，会使用到cens, days, arm和age四个变量
+
+|  变量 |  含义 |
+| :--: | :-: |
+| days | 事件第一次发生的天数 |
+| cens | 1，事件发生；0，数据有删失|
+| age | 研究时的受访者年龄|
+| arm | 根据使用药物分组 | 
+
+* 创建生存对象
+
+```{r}
+obj_surv <-Surv(actg$days, actg$cens==1)      #创建生存对象
+obj_surv[1:10]
+```
+
+创建的生存对象obj_surv，后面会用于做为模型中的响应变量。以前10个数据为例，带+号表示数据有删失。
+
+# Plot
+
+## Survival Curve Plot 
+
+```{r message=FALSE, warning=FALSE, fig.showtext=TRUE}
+fit_surv <- survfit(obj_surv  ~ actg$arms, ctype = 1) #生存曲线数据
+#生存函数曲线
+ggsurvplot(fit_surv,
+           data = actg,
+           title = "图1 Survival Curve Plot",
+           xlab = "days",
+           ylim = c(0.55,1),
+           legend.title = "",      #图例标题
+           legend.labs = c("zidovudine", "zidovudine and didanosine",
+                           "zidovudine and zalcitabine", "didanosine"),
+           legend = c(0.25,0.3),   #图例位置
+           )
+```
+
+从图1可以看出：
+
+1. 其它3组都比单独使用zidovudine的组生存概率高，说明其它3种疗法更为有效
+ 
+2. 单独使用didanosine组的生存概率虽较单独使用zidovudine组高，但仍比另外两组混合治疗方法的生存概率低
+
+3. 在前期，zidovudine+didanosine组与zidovudine+zalcitabine组的生存概率十分接近，但是在后期，则是zidovudine+didanosine组的生存概率更高
+
+##  Cumulative Hazard Function
+
+```{r message=FALSE, warning=FALSE, fig.showtext=TRUE}
+ggsurvplot(fit_surv, 
+           data = actg,
+           fun = "cumhaz",
+           title = "图2 Cumulative Hazard Function",
+           legend.title = "",    
+           legend.labs = c("zidovudine", "zidovudine and didanosine",
+                           "zidovudine and zalcitabine", "didanosine"),
+           legend=c(0.25, 0.8),
+           xlab = "days") # 绘制累计风险曲线
+```
+
+这里绘制的累积风险函数采用Nelson-Aalen估计， 由在survfit()中的ctype = 1参数来确定。
+
+从图2可以看出：
+
+1. 其它3组的累积风险都比单独使用zidovudine组低，说明其它3种疗法更为有效
+ 
+2. 单独使用didanosine组的累积风险虽较单独使用zidovudine组低，但仍比另外两组混合治疗方法的累积风险高
+
+3. 在前期，zidovudine+didanosine组与zidovudine+zalcitabine组的累积风险十分接近，但是在后期，则是zidovudine+didanosine组的累积风险更低
+
+综上，图2和图1得出的结论相同，基本上可以说明zidovudine+didanosine组是四种方法中疗效最好的
+
+## Hazard Function
+
+```{r message=FALSE, warning=FALSE, fig.showtext=TRUE}
+#划分数据集
+zio <- subset(actg,arms==0)
+zio_did <- subset(actg, arms==1)
+zio_zal <- subset(actg, arms==2)
+did <- subset(actg, arms==3)
+
+#拟合
+haz1 <- kphaz.fit(zio$days, zio$cens, method = "product-limit")
+haz2 <- kphaz.fit(zio_did$days, zio_did$cens,method = "product-limit" )
+haz3 <- kphaz.fit(zio_zal$days, zio_zal$cens, method = "product-limit")
+haz4 <- kphaz.fit(did$days, did$cens, method = "product-limit")
+
+#作图
+par(mfrow=c(2,2)) 
+kphaz.plot(haz1, col = "blue", main = "zidovudine")
+kphaz.plot(haz2, main ="zidovudine and didanosine")
+kphaz.plot(haz3, main ="zidovudine and zalcitabine", col = "red")
+kphaz.plot(haz4, main ="didanosine", col = "grey")
+```
+
+这里使用muhaz包中的函数kphaz.fit()和kphaz.plot()进行拟合和画图，采用的非参数方法是Kaplan-Meier估计。
+
+可以看出：
+
+1. zidovudine组的风险是最高的，且明显高于其它3组
+
+2. didanosine组的风险比zidovudine组低，平均风险比其它两组要稍高
+
+3. zidovudine+didanosine组与zidovudine+zalcitabine组的风险十分接近，但是zidovudine+didanosine组的风险存在几处偏高的极端值，所以zidovudine+didanosine组更加不稳定
+
+结合生存函数和累积风险函数，可以进一步判断zidovudine+didanosine组治疗效果是最好的，zidovudine+zalcitabine组次之，didanosine组也会好于zidovudine组。但是，这些数据并没有控制其它变量，可能会导致对某一特定人群治疗效果与结论存在差异，所以需进一步控制想研究的变量来分析
+
+# Log-rank Test
+
+## 未分层
+
+* 假设
+
+我们想检验假设
+$$
+H_0:\text{所有生存曲线相同} \quad vs \quad H_1:\text{至少有两组生存曲线不同}
+$$
+* 计算统计量和p值 
+
+```{r message=FALSE, warning=FALSE, fig.showtext=TRUE}
+#log-rank test
+lrt <- survdiff(obj_surv  ~ actg$arms)
+lrt
+#log-rank test age
+actg$age_d <- 0    #创建新列
+actg[which(actg$age <= 25),]$age_d=1           #数据分层
+actg[which(actg$age > 25 & actg$age <= 55),]$age_d = 2
+actg[which(actg$age > 55),]$age_d = 3  
+```
+
+统计量$X^2=49.2$在原假设下服从自由度为3的卡方分布，并且可以得到$p=1e-10<0.01$
+
+* 结论
+
+在显著性水平大于0.01的情况下，都可以拒绝原假设，认为四组的生存曲线是不同的
+
+## 根据age分层
+
+* 数据预处理
+
+将变量age的数据以<=25，25~55，>55的标准分为三组，分别标记为1，2，3，储存在stra_age的新变量中
+
+```{r message=FALSE, warning=FALSE}
+actg$stra_age <- 0    #创建新列
+actg[which(actg$age <= 25),]$stra_age=1           
+actg[which(actg$age > 25 & actg$age <= 55),]$stra_age = 2
+actg[which(actg$age > 55),]$stra_age = 3         
+```
+
+* 假设
+
+这里想检验的假设同上：
+$$
+H_0:\text{所有生存曲线相同} \quad vs \quad H_1:\text{至少有两组生存曲线不同}
+$$
+
+* 计算统计量和p值
+
+```{r message=FALSE, warning=FALSE}
+lrt_st <- survdiff(obj_surv ~ arms + strata(stra_age), data = actg)
+lrt_st
+```
+
+统计量$X^2=49.6$在原假设下服从自由度为3的卡方分布，并且可以得到$p=1e-10<0.01$。
+
+* 结论
+
+在显著性水平大于0.01的情况下，都可以拒绝原假设，认为四组的生存曲线是不同的 。注意这里统计量比未根据年龄分层时的统计量更大，从而计算的p值会更小，所以更能拒绝原假设。
+总而言之，分层和未分层的检验结果几乎一样，相差不大
